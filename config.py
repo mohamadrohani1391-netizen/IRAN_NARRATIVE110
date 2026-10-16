@@ -1,5 +1,5 @@
 import os
 
 # قرار دادن مستقیم توکن برای تست قطعی
-BOT_TOKEN = "توکن_روبیکا_خودت_را_اینجا_با_دابل_کوتیشن_بگذار"
+BOT_TOKEN = "CGIDJC0VOHYOCZSFQBWZVAYLCQWSWMWMEANNLPRPNGAISNEGDZJDTHJUVEINJZFV"
 PORT = int(os.environ.get("PORT", 5000))
