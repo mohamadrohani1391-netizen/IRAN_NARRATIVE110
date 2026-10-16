@@ -4,9 +4,9 @@ from flask import Flask, request
 
 app = Flask(__name__)
 
-# توکن رباتت را اینجا دقیقاً بین دابل‌کوتیشن قرار بده
+# توکن ربات روبیکای خودت را جایگزین کن
 BOT_TOKEN = "CGIDJC0VOHYOCZSFQBWZVAYLCQWSWMWMEANNLPRPNGAISNEGDZJDTHJUVEINJZFV"
-RUBIKA_API_URL = f"https://botapi.rubika.ir/v3/{BOT_TOKEN}"
+BASE_URL = f"https://botapi.rubika.ir/v3/{BOT_TOKEN}"
 
 @app.route('/')
 def home():
@@ -16,25 +16,22 @@ def home():
 def webhook():
     try:
         data = request.get_json()
-        print("Received update from Rubika:", data)
+        print("Received data from Rubika:", data)
         
-        # استخراج متن پیام و آیدی کاربر (اگر پیامی آمده باشد)
-        if data and 'message' in data:
-            message = data['message']
-            chat_id = message.get('chat_id')
-            text = message.get('text', '')
+        if data and "message" in data:
+            chat_id = data["message"]["chat_id"]
+            text = data["message"].get("text", "")
             
-            # اگر کاربر /start فرستاد، جواب بده
-            if text == '/start':
-                send_message(chat_id, "سلام! ربات ایران نارسیتیف با موفقیت روشن شد و آماده به کار است. 🚀")
+            if text == "/start":
+                send_message(chat_id, "سلام! ربات ایران نارسیتیف با موفقیت فعال شد. 🚀")
                 
-        return "OK", 200
     except Exception as e:
-        print("Error processing webhook:", e)
-        return "OK", 200
+        print("Error handling webhook:", e)
+        
+    return "OK", 200
 
 def send_message(chat_id, text):
-    url = f"{RUBIKA_API_URL}/sendMessage"
+    url = f"{BASE_URL}/sendMessage"
     payload = {
         "chat_id": chat_id,
         "text": text
@@ -48,3 +45,4 @@ def send_message(chat_id, text):
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+    
