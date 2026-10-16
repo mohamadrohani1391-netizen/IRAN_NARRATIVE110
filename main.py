@@ -1,45 +1,121 @@
 import os
+import json
 import time
-from flask import Flask, request
-from rubika_api import get_updates, send_message
-from logic import handle_message
 import threading
+import requests
+from flask import Flask
+
+# تنظیمات اصلی
+TOKEN = os.getenv("BOT_TOKEN", "CGIDJC0VOHYOCZSFQBWZVAYLCQWSWMWMEANNLPRPNGAISNEGDZJDTHJUVEINJZFV")  # توکن ربات روبیکا
+API_URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
+DB_FILE = "database.json"
 
 app = Flask(__name__)
 
-# مسیر برای رندر که سرور را زنده نگه دارد
-@app.route("/", methods=["GET"])
-def home():
-    return "Bot is Polling...", 200
+# مدیریت دیتابیس JSON ساده و ایمن
+def load_db():
+    if not os.path.exists(DB_FILE):
+        return {"users": {}, "admins": []}
+    try:
+        with open(DB_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {"users": {}, "admins": []}
 
-def bot_loop():
-    """حلقه اصلی که مدام پیام‌ها را چک می‌کند"""
-    print("Bot loop started...")
-    last_update_id = 0
+def save_db(data):
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+# ارسال پیام به روبیکا
+def send_message(chat_id, text):
+    url = f"{API_URL}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text
+    }
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        print(f"Send message response: {response.text}")
+    except Exception as e:
+        print(f"Error sending message: {e}")
+
+# پردازش پیام‌های دریافتی
+def handle_message(message):
+    try:
+        chat_id = message.get("chat_id")
+        text = message.get("text", "").strip()
+        sender_id = message.get("sender_id")
+        
+        if not chat_id or not text:
+            return
+
+        print(f"Received message from {sender_id}: {text}")
+
+        db = load_db()
+        # ثبت کاربر در دیتابیس
+        if sender_id and sender_id not in db["users"]:
+            db["users"][sender_id] = {"joined_at": time.time()}
+            save_db(db)
+
+        # پاسخ به دستورات
+        if text == "/start":
+            welcome_text = (
+                "سلام! 🇮🇷 به ربات رسمی «ایران روایت» (Iran Narrative) خوش آمدید.\n\n"
+                "از منوهای زیر یا دستورات استفاده کنید:"
+            )
+            send_message(chat_id, welcome_text)
+        elif text == "مدیریت" or text == "/panel":
+            send_message(chat_id, "پنل مدیریت فعال است.")
+        else:
+            send_message(chat_id, f"پیام شما دریافت شد: {text}")
+
+    except Exception as e:
+        print(f"Error in handle_message: {e}")
+
+# حلقه دریافت پیام (Long Polling در پس‌زمینه)
+def run_polling():
+    offset = 0
+    print("Bot polling started in background thread...")
+    time.sleep(3)  # کمی مکث برای بالا آمدن کامل سرور
     
     while True:
-        updates = get_updates()
-        for update in updates:
-            # فقط پیام‌های جدید را پردازش کن
-            update_id = update.get("update_id")
-            if update_id > last_update_id:
-                message = update.get("message", {})
-                chat_id = message.get("chat_id")
-                text = message.get("text", "")
+        try:
+            url = f"{API_URL}/getUpdates"
+            payload = {"offset": offset, "limit": 10, "timeout": 30}
+            response = requests.post(url, json=payload, timeout=35)
+            
+            if response.status_code == 200:
+                result = response.json()
+                updates = result.get("data", {}).get("updates", []) or result.get("updates", [])
                 
-                if chat_id and text:
-                    print(f"New message from {chat_id}: {text}")
-                    handle_message(chat_id, text)
+                for update in updates:
+                    # پشتیبانی از ساختارهای مختلف احتمالی آپدیت در روبیکا
+                    msg = update.get("message") or update.get("body", {}).get("message")
+                    if msg:
+                        handle_message(msg)
+                    
+                    update_id = update.get("update_id") or update.get("id")
+                    if update_id is not None:
+                        offset = int(update_id) + 1
+            else:
+                print(f"Polling HTTP error: {response.status_code}")
                 
-                last_update_id = update_id
-        
-        time.sleep(2)  # ۲ ثانیه صبر کن و دوباره چک کن (برای جلوگیری از بلاک شدن)
+        except Exception as e:
+            print(f"Polling exception: {e}")
+            
+        time.sleep(2)
 
+# وب‌سرویس Flask برای زنده نگه داشتن رندر (Keep-Alive)
+@app.route("/")
+def index():
+    return "Iran Narrative Bot is running successfully!"
+
+# راه‌اندازی ترد پولینگ همراه با Flask
 if __name__ == "__main__":
-    # اجرای حلقه ربات در یک رشته (Thread) جداگانه
-    threading.Thread(target=bot_loop, daemon=True).start()
+    t = threading.Thread(target=run_polling, daemon=True)
+    t.start()
     
-    # اجرای سرور Flask برای رندر
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+    
               
